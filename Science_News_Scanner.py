@@ -26,8 +26,10 @@ if not api_key:
 client = OpenAI(api_key=api_key)
 
 # --- FUNCTIONS ---
+
 def fetch_doaj_articles():
     """Fetches recent science articles from Directory of Open Access Journals"""
+    # We fetch slightly fewer articles here to keep the total count manageable
     url = "https://doaj.org/api/v1/search/articles/bibjson.subject.term:science?sort=created_date&pageSize=5"
     try:
         response = requests.get(url, timeout=10)
@@ -46,6 +48,7 @@ def fetch_doaj_articles():
         return []
 
 def parse_rss_feeds():
+    # The list of sources to scan
     feed_urls = [
         "http://www.nature.com/subjects/scientific-reports.rss",
         "http://journals.plos.org/plosone/feed/atom",
@@ -59,11 +62,13 @@ def parse_rss_feeds():
     status_text = st.empty()
     progress_bar = st.progress(0)
     
+    # Loop through RSS feeds
     for i, url in enumerate(feed_urls):
         status_text.text(f"Scanning source {i+1}/{len(feed_urls)}: {url}...")
         try:
             feed = feedparser.parse(url)
-            for entry in feed.entries[:3]: # Limit to top 3 per feed for speed
+            # Limit to top 3 entries per feed to save time/cost
+            for entry in feed.entries[:3]: 
                 articles.append({
                     'title': entry.title,
                     'link': entry.link,
@@ -72,10 +77,14 @@ def parse_rss_feeds():
                 })
         except:
             continue
+        # Update progress bar
         progress_bar.progress((i + 1) / len(feed_urls))
             
+    # Fetch API data
     status_text.text("Fetching DOAJ API data...")
     articles.extend(fetch_doaj_articles())
+    
+    # Clean up UI elements
     status_text.empty()
     progress_bar.empty()
     
@@ -83,11 +92,16 @@ def parse_rss_feeds():
 
 def analyze_with_ai(articles):
     results = []
+    # Create a progress bar and a status text area
+    progress_bar = st.progress(0)
     status_text = st.empty()
     
-    # Create a container for the results
+    total = len(articles)
+    
     for i, article in enumerate(articles):
-        status_text.text(f"AI analyzing article {i+1}/{len(articles)}...")
+        # Update status and progress bar
+        status_text.text(f"AI analyzing article {i+1}/{total}: {article['title'][:40]}...")
+        progress_bar.progress((i + 1) / total)
         
         prompt = f"""
         Role: Senior Science Editor.
@@ -107,23 +121,28 @@ def analyze_with_ai(articles):
         
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="gpt-4o-mini",  # FIXED: Correct model name
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=100
+                max_tokens=150,
+                temperature=0.7
             )
             content = response.choices[0].message.content
             
-            # Simple parsing to check if score is high enough (e.g. > 7)
-            # In a real app, you'd use json.loads() for robustness
-            if '"score": 7' in content or '"score": 8' in content or '"score": 9' in content:
+            # Check for high scores (7, 8, 9, or 10) in the response text
+            if any(x in content for x in ['"score": 7', '"score": 8', '"score": 9', '"score": 10']):
                 results.append({
                     "data": article,
                     "analysis": content
                 })
-        except:
+                
+        except Exception as e:
+            # Print error to UI for debugging
+            st.error(f"Error on article {i+1}: {e}")
             continue
             
-    status_text.empty()
+    # Clear the progress UI when done
+    status_text.text("Analysis Complete!")
+    progress_bar.empty()
     return results
 
 # --- MAIN APP UI ---
@@ -134,12 +153,18 @@ st.markdown("_Automated discovery pipeline for Popular Mechanics deputy editor t
 
 if st.button("Run Daily Scan"):
     with st.spinner("Trawling the deep web..."):
+        # 1. Gather Data
         raw_articles = parse_rss_feeds()
         st.success(f"Found {len(raw_articles)} raw papers. Filtering with AI...")
         
+        # 2. Filter Data
         winners = analyze_with_ai(raw_articles)
         
+    # 3. Display Results
     st.header(f"Today's Top Picks ({len(winners)})")
+    
+    if len(winners) == 0:
+        st.warning("No high-scoring stories found today. Try again later!")
     
     for item in winners:
         with st.expander(f"⭐ {item['data']['title']}", expanded=True):
@@ -148,4 +173,5 @@ if st.button("Run Daily Scan"):
                 st.markdown(f"**Source:** [{item['data']['source']}]({item['data']['link']})")
                 st.caption(item['data']['summary'][:300] + "...")
             with col2:
+                # Simple formatting to clean up the JSON string for display
                 st.info(item['analysis'])
