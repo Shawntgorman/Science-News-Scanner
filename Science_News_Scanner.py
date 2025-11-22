@@ -2,145 +2,131 @@ import streamlit as st
 import feedparser
 import requests
 import datetime
+import json
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
 
 # --- CONFIGURATION & SECURITY ---
-# This loads API key from .env (local) or Streamlit Secrets (cloud)
 load_dotenv()
 
 def get_api_key():
-    # Check Streamlit secrets first (for cloud deployment)
     if "OPENAI_API_KEY" in st.secrets:
         return st.secrets["OPENAI_API_KEY"]
-    # Fallback to environment variable (for local run)
     return os.getenv("OPENAI_API_KEY")
 
 api_key = get_api_key()
 
 if not api_key:
-    st.error("API Key not found! Please set OPENAI_API_KEY in .env or Streamlit Secrets.")
+    st.error("API Key not found! Please set OPENAI_API_KEY in Streamlit Secrets.")
     st.stop()
 
 client = OpenAI(api_key=api_key)
 
 # --- FUNCTIONS ---
 
-def fetch_doaj_articles():
-    """Fetches recent science articles from Directory of Open Access Journals"""
-    # We fetch slightly fewer articles here to keep the total count manageable
-    url = "https://doaj.org/api/v1/search/articles/bibjson.subject.term:science?sort=created_date&pageSize=5"
-    try:
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        articles = []
-        for result in data.get('results', []):
-            bibjson = result.get('bibjson', {})
-            articles.append({
-                'title': bibjson.get('title', 'No Title'),
-                'link': bibjson.get('link', [{}])[0].get('url', '#'),
-                'summary': bibjson.get('abstract', 'No Abstract'),
-                'source': 'DOAJ'
-            })
-        return articles
-    except Exception as e:
-        return []
-
-def parse_rss_feeds():
-    # The list of sources to scan
+def fetch_rss_data():
+    # The complete list of 10 sources
     feed_urls = [
         "http://www.nature.com/subjects/scientific-reports.rss",
         "http://journals.plos.org/plosone/feed/atom",
-        "https://royalsocietypublishing.org/action/showFeed?type=etoc&journalCode=rspa",
-        "https://royalsocietypublishing.org/action/showFeed?type=etoc&journalCode=pnas",
+        "https://royalsocietypublishing.org/action/showFeed?type=etoc&journalCode=rspa", # Proc A
+        "https://royalsocietypublishing.org/action/showFeed?type=etoc&journalCode=rspb", # Proc B
+        "https://www.pnas.org/action/showFeed?type=etoc&journalCode=pnas",
         "http://export.arxiv.org/rss/quant-ph",
-        "http://connect.biorxiv.org/biorxiv_xml.php?subject=all"
+        "http://connect.biorxiv.org/biorxiv_xml.php?subject=all",
+        "https://news.ycombinator.com/rss",
+        "http://feeds.aps.org/rss/recent/prl.xml",
+        "https://www.reddit.com/r/LabRats/new/.rss"
     ]
     
     articles = []
     status_text = st.empty()
     progress_bar = st.progress(0)
     
-    # Loop through RSS feeds
+    # We use a custom User-Agent to prevent Reddit/Journals from blocking the script
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PopMech-Scanner/1.0"
+    }
+    
     for i, url in enumerate(feed_urls):
         status_text.text(f"Scanning source {i+1}/{len(feed_urls)}: {url}...")
         try:
-            feed = feedparser.parse(url)
-            # Limit to top 3 entries per feed to save time/cost
+            # Fetch raw content first to handle permission headers
+            response = requests.get(url, headers=headers, timeout=10)
+            feed = feedparser.parse(response.content)
+            
+            # Grab top 3 entries per feed
             for entry in feed.entries[:3]: 
                 articles.append({
                     'title': entry.title,
                     'link': entry.link,
-                    'summary': getattr(entry, 'summary', '')[:500], # Truncate long summaries
+                    'summary': getattr(entry, 'summary', '')[:600], # increased limit
                     'source': feed.feed.get('title', 'RSS Source')
                 })
-        except:
+        except Exception as e:
+            print(f"Failed to parse {url}: {e}")
             continue
-        # Update progress bar
-        progress_bar.progress((i + 1) / len(feed_urls))
             
-    # Fetch API data
-    status_text.text("Fetching DOAJ API data...")
-    articles.extend(fetch_doaj_articles())
+        progress_bar.progress((i + 1) / len(feed_urls))
     
-    # Clean up UI elements
     status_text.empty()
     progress_bar.empty()
-    
     return articles
 
 def analyze_with_ai(articles):
     results = []
-    # Create a progress bar and a status text area
     progress_bar = st.progress(0)
     status_text = st.empty()
     
     total = len(articles)
     
     for i, article in enumerate(articles):
-        # Update status and progress bar
-        status_text.text(f"AI analyzing article {i+1}/{total}: {article['title'][:40]}...")
+        status_text.text(f"AI analyzing {i+1}/{total}: {article['title'][:40]}...")
         progress_bar.progress((i + 1) / total)
         
+        # We force the AI to return valid JSON using response_format
         prompt = f"""
-        Role: Senior Science Editor.
-        Task: Rate this story for Popular Mechanics (0-10).
-        Criteria: "Small but Astounding," Visual, Niche.
+        Role: Senior Science Editor at Popular Mechanics.
+        Task: Evaluate this story.
         
         Title: {article['title']}
         Summary: {article['summary']}
         
-        Output format: strictly JSON.
-        {{
-            "score": number,
-            "headline": "catchy headline",
-            "reason": "1 sentence why"
-        }}
+        Criteria:
+        - "Small but Astounding" (Niche, weird, mind-blowing)
+        - visually promising
+        - NOT generic incremental science
+        
+        Return JSON with these exact keys:
+        - "score" (number 0-10)
+        - "headline" (string)
+        - "reason" (string)
         """
         
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",  # FIXED: Correct model name
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=150,
+                model="gpt-4o-mini",
+                messages=[{"role": "system", "content": "You output only valid JSON."},
+                          {"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}, # This guarantees JSON output
                 temperature=0.7
             )
-            content = response.choices[0].message.content
             
-            # Check for high scores (7, 8, 9, or 10) in the response text
-            if any(x in content for x in ['"score": 7', '"score": 8', '"score": 9', '"score": 10']):
+            # Parse the JSON properly
+            data = json.loads(response.choices[0].message.content)
+            
+            # Lowered threshold to 6 to ensure you see results for the test
+            if data.get("score", 0) >= 6:
                 results.append({
-                    "data": article,
-                    "analysis": content
+                    "original": article,
+                    "ai_data": data
                 })
                 
         except Exception as e:
-            # Print error to UI for debugging
-            st.error(f"Error on article {i+1}: {e}")
+            print(f"AI Error on {i}: {e}")
             continue
             
-    # Clear the progress UI when done
     status_text.text("Analysis Complete!")
     progress_bar.empty()
     return results
@@ -154,7 +140,7 @@ st.markdown("_Automated discovery pipeline for Popular Mechanics deputy editor t
 if st.button("Run Daily Scan"):
     with st.spinner("Trawling the deep web..."):
         # 1. Gather Data
-        raw_articles = parse_rss_feeds()
+        raw_articles = fetch_rss_data()
         st.success(f"Found {len(raw_articles)} raw papers. Filtering with AI...")
         
         # 2. Filter Data
@@ -164,14 +150,18 @@ if st.button("Run Daily Scan"):
     st.header(f"Today's Top Picks ({len(winners)})")
     
     if len(winners) == 0:
-        st.warning("No high-scoring stories found today. Try again later!")
+        st.warning("No high-scoring stories found today. (Try checking the logs or lowering the score threshold in the code)")
     
     for item in winners:
-        with st.expander(f"⭐ {item['data']['title']}", expanded=True):
+        # Color-coded score badge
+        score = item['ai_data']['score']
+        score_color = "green" if score >= 8 else "orange"
+        
+        with st.expander(f"[{score}/10] {item['ai_data']['headline']}", expanded=True):
             col1, col2 = st.columns([3, 1])
             with col1:
-                st.markdown(f"**Source:** [{item['data']['source']}]({item['data']['link']})")
-                st.caption(item['data']['summary'][:300] + "...")
+                st.markdown(f"**Pitch:** {item['ai_data']['reason']}")
+                st.markdown(f"**Original Source:** [{item['original']['source']}]({item['original']['link']})")
+                st.caption(f"**Original Title:** {item['original']['title']}")
             with col2:
-                # Simple formatting to clean up the JSON string for display
-                st.info(item['analysis'])
+                st.metric(label="PopMech Score", value=f"{score}/10")
