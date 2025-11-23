@@ -121,7 +121,7 @@ def analyze_with_ai(articles):
                 messages=[{"role": "system", "content": "You output only valid JSON."},
                           {"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}, # This guarantees JSON output
-                temperature=0.9
+                temperature=0.7
             )
             
             # Parse the JSON properly
@@ -176,4 +176,5 @@ if st.button("Run Daily Scan"):
                 st.caption(f"**Original Title:** {item['original']['title']}")
             with col2:
                 st.metric(label="PopMech Score", value=f"{score}/10")
+
 
