@@ -38,9 +38,8 @@ def fetch_rss_data():
         "https://news.ycombinator.com/rss",
         "http://feeds.aps.org/rss/recent/prl.xml",
         "https://www.reddit.com/r/LabRats/new/.rss",
-        # Fixed URLs for the new sources you added:
         "https://www.eurekalert.org/rss/science_business.xml", # EurekAlert RSS
-        "https://osf.io/preprints/discover", # Note: OSF might not parse well without API, but kept as requested
+        "https://osf.io/preprints/discover", # Note: OSF might not parse well without API
         "https://www.sciencedaily.com/rss/top/science.xml", # ScienceDaily RSS
         "https://acsh.org/feed/" # ACSH RSS
     ]
@@ -172,3 +171,4 @@ if st.button("Run Daily Scan"):
                 st.caption(f"**Original Title:** {item['original']['title']}")
             with col2:
                 st.metric(label="PopMech Score", value=f"{score}/10")
+
