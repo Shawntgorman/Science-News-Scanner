@@ -26,7 +26,7 @@ client = OpenAI(api_key=api_key)
 # --- FUNCTIONS ---
 
 def fetch_rss_data():
-    # The complete list of 10 sources
+    # The list of sources
     feed_urls = [
         "http://www.nature.com/subjects/scientific-reports.rss",
         "http://journals.plos.org/plosone/feed/atom",
@@ -37,7 +37,17 @@ def fetch_rss_data():
         "http://connect.biorxiv.org/biorxiv_xml.php?subject=all",
         "https://news.ycombinator.com/rss",
         "http://feeds.aps.org/rss/recent/prl.xml",
-        "https://www.reddit.com/r/LabRats/new/.rss"
+        "https://www.reddit.com/r/LabRats/new/.rss",
+        "https://pubcrawler.gen.tcd.ie/",
+        "https://www.thetransmitter.org/",
+        "https://www.eurekalert.org/",
+        "https://osf.io/preprints/discover",
+        "https://spi-hub.app.vumc.org/pp-service/browse",
+        "https://osf.io/preprints/psyarxiv",
+        "https://www.researchgate.net/",
+        "https://www.sciencedaily.com/",
+        "https://www.acsh.org/",
+        
     ]
     
     articles = []
@@ -87,30 +97,31 @@ def analyze_with_ai(articles):
         
         # We force the AI to return valid JSON using response_format
         prompt = f"""
-        Role: Senior Science Editor at Popular Mechanics.
+        Role: Deputy Short-Form Science Editor at Popular Mechanics.
         Task: Evaluate this story.
         
         Title: {article['title']}
         Summary: {article['summary']}
         
         Criteria:
-        - "Small but Astounding" (Niche, weird, mind-blowing)
-        - visually promising
-        - NOT generic incremental science
+        - Fits genre requirements: AI & Futurism; Time & Time Travel; Consciousness & the Mind; Simulation & Holographic Reality; Quantum & Higher-Dimensional Physics; Biology & Evolution; Earth & Environment; Life Extension & Bio Resurrections
+        - Possible to explain the broader implications and what makes it compelling to a general reader, and is vivid, conversational, and accessible (i.e. not jargon-heavy)
+        - Contains cause-effect explanatory information that can be presented in college-freshman-level English prose
+        - Can be summarized in a headline that includes enough information to tell the reader what the story is about, and the headline also hints at a question the reader will be able to answer by reading the information in the story
         
         Return JSON with these exact keys:
         - "score" (number 0-10)
         - "headline" (string)
-        - "reason" (string)
+        - "" (string)
         """
         
         try:
             response = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model="o3-deep-research",
                 messages=[{"role": "system", "content": "You output only valid JSON."},
                           {"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}, # This guarantees JSON output
-                temperature=0.7
+                temperature=0.9
             )
             
             # Parse the JSON properly
@@ -165,3 +176,4 @@ if st.button("Run Daily Scan"):
                 st.caption(f"**Original Title:** {item['original']['title']}")
             with col2:
                 st.metric(label="PopMech Score", value=f"{score}/10")
+
