@@ -28,7 +28,7 @@ client = OpenAI(api_key=api_key)
 def fetch_rss_data():
     # The list of sources (UPDATED to use actual RSS feeds where possible)
     feed_urls = [
-        “openalex.org”,
+        "openalex.org",
         "https://osf.io/preprints/discover", # Note: OSF might not parse well without API
         "http://www.nature.com/subjects/scientific-reports.rss",
         "http://journals.plos.org/plosone/feed/atom",
@@ -169,5 +169,6 @@ if st.button("Run Daily Scan"):
                 st.caption(f"**Original Title:** {item['original']['title']}")
             with col2:
                 st.metric(label="PopMech Score", value=f"{score}/10")
+
 
 
