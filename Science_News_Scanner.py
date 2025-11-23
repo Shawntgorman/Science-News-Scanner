@@ -117,7 +117,7 @@ def analyze_with_ai(articles):
         
         try:
             response = client.chat.completions.create(
-                model="o3-deep-research",
+                model="gpt-4o-mini",
                 messages=[{"role": "system", "content": "You output only valid JSON."},
                           {"role": "user", "content": prompt}],
                 response_format={"type": "json_object"}, # This guarantees JSON output
@@ -176,6 +176,7 @@ if st.button("Run Daily Scan"):
                 st.caption(f"**Original Title:** {item['original']['title']}")
             with col2:
                 st.metric(label="PopMech Score", value=f"{score}/10")
+
 
 
 
