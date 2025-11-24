@@ -2,12 +2,13 @@ import streamlit as st
 import feedparser
 import requests
 import datetime
-from datetime import date
+from datetime import date, timedelta
 import json
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
-import urllib.parse
+import random
+import time
 
 # --- CONFIGURATION & SECURITY ---
 load_dotenv()
@@ -18,101 +19,131 @@ def get_api_key():
     return os.getenv("OPENAI_API_KEY")
 
 api_key = get_api_key()
-
 if not api_key:
     st.error("API Key not found! Please set OPENAI_API_KEY in Streamlit Secrets.")
     st.stop()
 
 client = OpenAI(api_key=api_key)
 
-# --- USER PREFERENCES ---
-# We define the start date and keywords here to use across all APIs
-START_DATE = date(2025, 11, 18)
-KEYWORDS = [
-    "time travel", "consciousness", "holographic", 
-    "quantum", "resurrection", "life extension", 
-    "simulation", "synthetic biology", "warp drive", 
-    "futurism", "time", "consciousness", "evolution",
-    "Earth," "biology", "higher dimension", "higher-dimensional", 
-    "dimensionality", "environmental", "environment"
+# --- TARGETING PARAMETERS ---
+# We look back 5 days to ensure we catch the Nov 18 window
+START_DATE = datetime.date.today() - timedelta(days=5)
+
+# BANNED TERMS (Stops the "Flipped Classroom" / Policy papers)
+EXCLUDE_TERMS = [
+    "classroom", "education", "pedagogy", "curriculum", "funding", 
+    "policy", "obituary", "correction", "erratum", "diversity", 
+    "student", "campus", "undergraduate", "flipped"
 ]
+
+# --- HELPER FUNCTIONS ---
+
+def is_junk(title, summary):
+    """
+    Returns True if the paper is likely administrative/educational junk.
+    """
+    text = (title + " " + summary).lower()
+    for term in EXCLUDE_TERMS:
+        if term in text:
+            return True
+    return False
 
 # --- FETCHING FUNCTIONS ---
 
-def fetch_openalex():
+def fetch_openalex_targeted():
     """
-    Queries OpenAlex for papers published since Nov 18, 2025, 
-    matching specific PopMech keywords.
+    Fires specific, separate queries for each PopMech category to guarantee variety.
     """
-    st.write("...Querying OpenAlex API (Big database, this takes a second)...")
+    st.write(f"...Targeting OpenAlex (Papers since {START_DATE})...")
     articles = []
     
-    # Construct a search string: (time travel OR consciousness OR ...)
-    # OpenAlex uses 'default.search' for keywords
-    search_query = " OR ".join([f'"{k}"' for k in KEYWORDS])
+    # We run separate queries for distinct topics to ensure one doesn't drown out the others
+    queries = [
+        "time travel OR closed timelike curve OR wormhole OR time",
+        "quantum OR higher dimension OR dimensional OR dimensionality"
+        "artificial intelligence OR large language model OR agi",
+        "quantum entanglement OR holographic OR many worlds OR physics",
+        "synthetic biology OR crispr OR resurrection OR longevity",
+        "consciousness OR cognitive OR neural OR mind",
+        "biology OR evolution",
+        "Earth OR environment OR environmental",
+        "futurism OR simulation"
+    ]
     
-    # URL Encoding
-    params = {
-        'filter': f'from_publication_date:{START_DATE},default.search:{search_query}',
-        'per-page': 10,
-        'sort': 'publication_date:desc'
-    }
+    base_url = "https://api.openalex.org/works"
     
-    url = "https://api.openalex.org/works"
-    
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        data = r.json()
+    for q in queries:
+        # Construct filter: Published recently AND matches query in Title/Abstract
+        filter_param = f"from_publication_date:{START_DATE},title_and_abstract.search:{q}"
+        params = {
+            'filter': filter_param,
+            'per-page': 5, # Get top 5 for EACH category
+            'sort': 'relevance_score:desc' # Get the best matches, not just newest
+        }
         
-        for item in data.get('results', []):
-            # Extract relevant data
-            title = item.get('title')
-            # OpenAlex stores abstracts in an 'inverted index' which is hard to read.
-            # We often have to use the title or look for a stored abstract.
-            # For simplicity, we use the title + concepts as the summary if abstract is missing.
-            summary = f"Topics: {[c['display_name'] for c in item.get('concepts', [])[:5]]}"
-            
-            articles.append({
-                'title': title,
-                'link': item.get('doi') or item.get('id'),
-                'summary': summary,
-                'source': 'OpenAlex (Preprint/Paper)'
-            })
-    except Exception as e:
-        print(f"OpenAlex Error: {e}")
-        
+        try:
+            r = requests.get(base_url, params=params, timeout=5)
+            if r.status_code == 200:
+                data = r.json()
+                for item in data.get('results', []):
+                    title = item.get('title')
+                    if not title: continue
+                    
+                    # OpenAlex abstract handling
+                    abstract = "No abstract available."
+                    # (OpenAlex uses an inverted index for abstracts, often too complex to reconstruct quickly.
+                    # We rely on the Title + Concepts list for the AI judgment).
+                    concepts = [c['display_name'] for c in item.get('concepts', [])[:5]]
+                    summary = f"Key Concepts: {', '.join(concepts)}"
+                    
+                    if not is_junk(title, summary):
+                        articles.append({
+                            'title': title,
+                            'link': item.get('doi') or item.get('id'),
+                            'summary': summary,
+                            'source': f"OpenAlex ({q.split(' OR ')[0]}...)"
+                        })
+            time.sleep(0.2) # Be nice to the API
+        except Exception as e:
+            print(f"OpenAlex Error on {q}: {e}")
+            continue
+
     return articles
 
-def fetch_osf():
+def fetch_osf_preprints():
     """
-    Queries OSF Preprints API for recent submissions matching keywords.
+    Fetches raw recent preprints from OSF and filters locally.
     """
-    st.write("...Querying OSF Preprints API...")
+    st.write("...Scanning OSF Preprints...")
     articles = []
-    
-    # OSF search is simpler. We'll search for the general "science" category 
-    # and filter by date on our end, or use their query param.
-    
-    # Note: OSF API v2 filtering is strict. We will fetch recent preprints 
-    # and check keywords manually to ensure high relevance.
     url = "https://api.osf.io/v2/preprints/"
+    
+    # OSF doesn't support complex search well via API, so we fetch the firehose
+    # of recent papers and filter them ourselves.
     params = {
         'filter[date_published][gte]': f'{START_DATE}',
-        'page[size]': 15
+        'page[size]': 20 # Grab a larger chunk
     }
     
     try:
         r = requests.get(url, params=params, timeout=10)
         data = r.json()
+        
+        relevant_keywords = ["quantum", "ai", "intelligence", "neural", "physics", "bio", "genome", "space", "time", "simulation"]
         
         for item in data.get('data', []):
             attrs = item.get('attributes', {})
             title = attrs.get('title', '')
-            desc = attrs.get('description', '')
+            desc = attrs.get('description', '') or ""
             
-            # Simple keyword check before adding
             full_text = (title + desc).lower()
-            if any(k in full_text for k in ["time", "quantum", "mind", "bio", "life", "ai", "simulation"]):
+            
+            # 1. Check for Junk
+            if is_junk(title, desc):
+                continue
+                
+            # 2. Check for Relevance
+            if any(k in full_text for k in relevant_keywords):
                 articles.append({
                     'title': title,
                     'link': item.get('links', {}).get('html'),
@@ -126,20 +157,17 @@ def fetch_osf():
 
 def fetch_rss_feeds():
     """
-    Fetches from standard RSS feeds (ArXiv, Nature, etc.)
+    Fetches from standard RSS feeds but goes deeper (Top 10).
     """
-    st.write("...Scanning standard RSS feeds...")
+    st.write("...Scanning ArXiv & Journals...")
     
-    # REMOVED OpenAlex/OSF from here. Only actual RSS feeds remain.
     feed_urls = [
-        "http://www.nature.com/subjects/scientific-reports.rss",
-        "http://journals.plos.org/plosone/feed/atom",
-        "https://royalsocietypublishing.org/action/showFeed?type=etoc&journalCode=rspa",
-        "https://royalsocietypublishing.org/action/showFeed?type=etoc&journalCode=pnas",
         "http://export.arxiv.org/rss/quant-ph",
+        "http://export.arxiv.org/rss/cs.AI",
         "http://export.arxiv.org/rss/q-bio",
-        "http://export.arxiv.org/rss/physics.soc-ph",
-        "http://export.arxiv.org/rss/cs.AI" # Added AI specific feed
+        "http://export.arxiv.org/rss/gr-qc", # General Relativity / Quantum Cosmology
+        "http://www.nature.com/subjects/scientific-reports.rss",
+        "https://www.pnas.org/action/showFeed?type=etoc&journalCode=pnas"
     ]
     
     articles = []
@@ -150,18 +178,19 @@ def fetch_rss_feeds():
             response = requests.get(url, headers=headers, timeout=10)
             feed = feedparser.parse(response.content)
             
-            for entry in feed.entries[:5]:
-                # RSS Date Filter
-                # We try to parse the date. If valid and older than start date, skip.
-                if hasattr(entry, 'published_parsed') and entry.published_parsed:
-                    pub_date = date(entry.published_parsed.tm_year, entry.published_parsed.tm_mon, entry.published_parsed.tm_mday)
-                    if pub_date < START_DATE:
-                        continue
+            # Go deeper! Top 10 instead of Top 3
+            for entry in feed.entries[:10]:
+                title = entry.title
+                summary = getattr(entry, 'summary', '')[:600]
                 
+                # IMMEDIATE TRASH FILTER
+                if is_junk(title, summary):
+                    continue
+
                 articles.append({
-                    'title': entry.title,
+                    'title': title,
                     'link': entry.link,
-                    'summary': getattr(entry, 'summary', '')[:600],
+                    'summary': summary,
                     'source': feed.feed.get('title', 'RSS Source')
                 })
         except:
@@ -171,34 +200,39 @@ def fetch_rss_feeds():
 
 def analyze_with_ai(articles):
     results = []
+    
+    # SHUFFLE the articles so PNAS isn't always first
+    random.shuffle(articles)
+    
+    # Cap the analysis at 25 articles to save tokens/time, but since we shuffled,
+    # it's a random sample of the best candidates.
+    selection = articles[:25]
+    
     progress_bar = st.progress(0)
     status_text = st.empty()
-    total = len(articles)
+    total = len(selection)
     
     if total == 0:
         return []
 
-    for i, article in enumerate(articles):
+    for i, article in enumerate(selection):
         status_text.text(f"AI analyzing {i+1}/{total}: {article['title'][:40]}...")
         progress_bar.progress((i + 1) / total)
         
         prompt = f"""
         Role: Deputy Short-Form Science Editor at Popular Mechanics.
-        Task: Evaluate this story.
         
-        Title: {article['title']}
-        Summary: {article['summary']}
-        Source: {article['source']}
+        Paper: "{article['title']}"
+        Summary: "{article['summary']}"
+        Source: "{article['source']}"
         
-        STRICT Criteria:
-        - Published/Posted after Nov 18, 2025.
-        - MUST fall into: AI & Futurism; Time & Time Travel; Consciousness; Simulation; Quantum; Biology & Evolution; Life Extension.
-        - MUST be a "Wow" story, not incremental research.
+        Does this paper meet these CRITERIA?
+        1. TOPIC: AI, Time Travel, Consciousness, Simulation, Quantum, Bio-Resurrection.
+        2. VIBE: "Small but Astounding" or "Weird Science."
+        3. EXCLUDE: Education, Policy, Incremental tweaks, boring math proofs.
         
-        Return JSON with these exact keys:
-        - "score" (number 0-10)
-        - "headline" (string, PopMech style)
-        - "reason" (string, why it fits the criteria)
+        If NO, return JSON: {{"score": 0, "headline": "", "reason": ""}}
+        If YES, return JSON: {{"score": 8, "headline": "PopMech Style Headline", "reason": "Why it's cool"}}
         """
         
         try:
@@ -207,12 +241,12 @@ def analyze_with_ai(articles):
                 messages=[{"role": "system", "content": "You output only valid JSON."},
                           {"role": "user", "content": prompt}],
                 response_format={"type": "json_object"},
-                temperature=0.8
+                temperature=0.7
             )
             
             data = json.loads(response.choices[0].message.content)
             
-            if data.get("score", 0) >= 6: # Filter for quality
+            if data.get("score", 0) >= 6:
                 results.append({
                     "original": article,
                     "ai_data": data
@@ -228,29 +262,34 @@ def analyze_with_ai(articles):
 # --- MAIN APP UI ---
 st.set_page_config(page_title="PopMech Signal Dashboard", layout="wide")
 
-st.title("📡 Signal-to-Noise Dashboard")
-st.markdown(f"**Target Date:** Nov 18, 2025 - Present")
-st.markdown("**Target Topics:** _Time Travel, Consciousness, Bio-Resurrection, AI, Quantum_")
+st.title("📡 Deep-Dive Signal Dashboard")
+st.markdown(f"**Scanning Window:** {START_DATE} to Present")
+st.markdown("**Filters:** _Education/Policy content auto-removed._")
 
-if st.button("Run Targeted Scan"):
-    with st.spinner(" querying OpenAlex, OSF, and ArXiv..."):
+if st.button("Run Deep Scan"):
+    with st.spinner("Executing targeted search patterns..."):
         
-        # Gather data from all 3 methods
-        list_1 = fetch_openalex()
-        list_2 = fetch_osf()
+        # 1. Fetch from all sources
+        list_1 = fetch_openalex_targeted()
+        list_2 = fetch_osf_preprints()
         list_3 = fetch_rss_feeds()
         
         all_articles = list_1 + list_2 + list_3
+        unique_articles = {v['title']:v for v in all_articles}.values() # Remove duplicates
+        final_list = list(unique_articles)
         
-        st.success(f"Found {len(all_articles)} papers matching criteria. Filtering with AI...")
+        st.success(f"Found {len(final_list)} candidates after filtering junk. Sending to AI...")
         
-        # Run AI Analysis
-        winners = analyze_with_ai(all_articles)
+        # 2. Analyze
+        winners = analyze_with_ai(final_list)
+        
+        # Sort by score
+        winners.sort(key=lambda x: x['ai_data']['score'], reverse=True)
         
     st.header(f"Today's Top Picks ({len(winners)})")
     
     if len(winners) == 0:
-        st.warning("No hits found. (OpenAlex/OSF might be quiet today, or keywords are too specific).")
+        st.warning("No hits found. (If you still see nothing, the date window might be too tight for these specific topics).")
     
     for item in winners:
         score = item['ai_data']['score']
@@ -258,4 +297,3 @@ if st.button("Run Targeted Scan"):
             st.markdown(f"**Pitch:** {item['ai_data']['reason']}")
             st.markdown(f"**Source:** [{item['original']['source']}]({item['original']['link']})")
             st.caption(f"**Original Title:** {item['original']['title']}")
-
