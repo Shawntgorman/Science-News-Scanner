@@ -229,7 +229,7 @@ def analyze_with_ai(articles):
         Does this paper meet these CRITERIA?
         1. TOPIC: Evolution, Biology, Earth Sciences, Environmental Sciences, AI, Futurism, Time, Time Travel, Consciousness, the Mind, Simulation, Holographic, Quantum, Resurrection, 
         Higher Dimensional Physics, Life Extension
-        2. CONTENT: "Meaningful advance in biology, physics, cognitive psychology, artificial intelligence, Earth sciences, and environmental sciences" and "Contains cause-effect explanations" and "Content can be used to ask and answer meaningful questions"
+        2. CONTENT: "Meaningful advance in biology, physics, cognitive psychology, artificial intelligence, Earth sciences, or environmental sciences" or "Contains cause-effect explanations" or "Content can be used to ask and answer meaningful questions"
         3. EXCLUDE: Education, Policy, Incremental tweaks, boring math proofs.
         
         If NO, return JSON: {{"score": 0, "headline": "", "reason": ""}}
@@ -261,13 +261,13 @@ def analyze_with_ai(articles):
     return results
 
 # --- MAIN APP UI ---
-st.set_page_config(page_title="PopMech Signal Dashboard", layout="wide")
+st.set_page_config(page_title="PopMech Science News Scanner", layout="wide")
 
-st.title("📡 Deep-Dive Signal Dashboard")
+st.title("📡 Science News Scanner")
 st.markdown(f"**Scanning Window:** {START_DATE} to Present")
-st.markdown("**Filters:** _Education/Policy content auto-removed._")
+st.markdown("AI & Futurism; Time & Time Travel; Consciousness & the Mind; Simulation & Holographic Reality; Quantum & Higher-Dimensional Physics; Biology & Evolution; Earth & Environment; Life Extension & Bio Resurrections")
 
-if st.button("Run Deep Scan"):
+if st.button("Run Scan"):
     with st.spinner("Executing targeted search patterns..."):
         
         # 1. Fetch from all sources
@@ -298,4 +298,5 @@ if st.button("Run Deep Scan"):
             st.markdown(f"**Pitch:** {item['ai_data']['reason']}")
             st.markdown(f"**Source:** [{item['original']['source']}]({item['original']['link']})")
             st.caption(f"**Original Title:** {item['original']['title']}")
+
 
