@@ -232,8 +232,20 @@ def analyze_with_ai(articles):
         2. CONTENT: "Meaningful advance in biology, physics, cognitive psychology, artificial intelligence, Earth sciences, or environmental sciences" or "Contains cause-effect explanations" or "Content can be comprehensibly summarized for Popular Mechanics readers" or "Content can be used to ask and answer meaningful questions"
         3. EXCLUDE: Education, Policy, Incremental tweaks, boring math proofs.
         
-        If NO, return JSON: {{"score": 0, "headline": "", "reason": ""}}
-        If YES, return JSON: {{"score": 8, "headline": "PopMech Style Headline", "reason": "Why it explains something new and answers interesting questions about important science topics"}}
+        If NO, return JSON: {{"score": 0, "headline": "", "dek": "", "pitch": ""}}
+        
+        If YES, create a compelling story pitch with:
+        - score: 7-10 based on newsworthiness and reader appeal
+        - headline: Punchy, engaging headline in Popular Mechanics style (8-12 words)
+        - dek: One-sentence subhead that expands on the headline (15-25 words)
+        - pitch: A vivid, conversational pitch paragraph (100-150 words) that:
+          * Summarizes the research clearly without jargon
+          * Explains WHY this matters to general readers
+          * Highlights the broader implications or "wow" factor
+          * Uses accessible language and concrete examples
+          * Captures Popular Mechanics' voice: curious, intelligent, but never stuffy
+        
+        Return JSON: {{"score": 8, "headline": "...", "dek": "...", "pitch": "..."}}
         """
         
         try:
@@ -294,10 +306,18 @@ if st.button("Run Scan"):
     
     for item in winners:
         score = item['ai_data']['score']
-        with st.expander(f"[{score}/10] {item['ai_data']['headline']}", expanded=True):
-            st.markdown(f"**Pitch:** {item['ai_data']['reason']}")
+        headline = item['ai_data'].get('headline', 'No headline generated')
+        dek = item['ai_data'].get('dek', '')
+        pitch = item['ai_data'].get('pitch', 'No pitch generated')
+        
+        with st.expander(f"[{score}/10] {headline}", expanded=True):
+            if dek:
+                st.markdown(f"*{dek}*")
+                st.markdown("---")
+            
+            st.markdown(f"**Pitch:**")
+            st.markdown(pitch)
+            st.markdown("---")
+            
             st.markdown(f"**Source:** [{item['original']['source']}]({item['original']['link']})")
             st.caption(f"**Original Title:** {item['original']['title']}")
-
-
-
