@@ -227,12 +227,13 @@ def analyze_with_ai(articles):
         Source: "{article['source']}"
         
         Does this paper meet these CRITERIA?
-        1. TOPIC: AI, Time Travel, Consciousness, Simulation, Quantum, Bio-Resurrection.
-        2. VIBE: "Small but Astounding" or "Weird Science."
+        1. TOPIC: Evolution, Biology, Earth Sciences, Environmental Sciences, AI, Futurism, Time, Time Travel, Consciousness, the Mind, Simulation, Holographic, Quantum, Resurrection, 
+        Higher Dimensional Physics, Life Extension
+        2. CONTENT: "Meaningful advance in biology, physics, cognitive psychology, artificial intelligence, Earth sciences, and environmental sciences" and "Contains cause-effect explanations" and "Content can be used to ask and answer meaningful questions"
         3. EXCLUDE: Education, Policy, Incremental tweaks, boring math proofs.
         
         If NO, return JSON: {{"score": 0, "headline": "", "reason": ""}}
-        If YES, return JSON: {{"score": 8, "headline": "PopMech Style Headline", "reason": "Why it's cool"}}
+        If YES, return JSON: {{"score": 8, "headline": "PopMech Style Headline", "reason": "Why it explains something new and answers interesting questions about important science topics"}}
         """
         
         try:
@@ -297,3 +298,4 @@ if st.button("Run Deep Scan"):
             st.markdown(f"**Pitch:** {item['ai_data']['reason']}")
             st.markdown(f"**Source:** [{item['original']['source']}]({item['original']['link']})")
             st.caption(f"**Original Title:** {item['original']['title']}")
+
