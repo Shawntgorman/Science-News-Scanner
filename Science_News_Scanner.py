@@ -29,9 +29,12 @@ client = OpenAI(api_key=api_key)
 # We define the start date and keywords here to use across all APIs
 START_DATE = date(2025, 11, 18)
 KEYWORDS = [
-    "time travel", "consciousness", "holographic universe", 
-    "quantum gravity", "bio resurrection", "life extension", 
-    "simulation theory", "synthetic biology", "warp drive"
+    "time travel", "consciousness", "holographic", 
+    "quantum", "resurrection", "life extension", 
+    "simulation", "synthetic biology", "warp drive", 
+    "futurism", "time", "consciousness", "evolution",
+    "Earth," "biology", "higher dimension", "higher-dimensional", 
+    "dimensionality", "environmental", "environment"
 ]
 
 # --- FETCHING FUNCTIONS ---
@@ -255,3 +258,4 @@ if st.button("Run Targeted Scan"):
             st.markdown(f"**Pitch:** {item['ai_data']['reason']}")
             st.markdown(f"**Source:** [{item['original']['source']}]({item['original']['link']})")
             st.caption(f"**Original Title:** {item['original']['title']}")
+
