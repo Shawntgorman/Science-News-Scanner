@@ -229,7 +229,7 @@ def analyze_with_ai(articles):
         Does this paper meet these CRITERIA?
         1. TOPIC: Evolution, Biology, Earth Sciences, Environmental Sciences, AI, Futurism, Time, Time Travel, Consciousness, the Mind, Simulation, Holographic, Quantum, Resurrection, 
         Higher Dimensional Physics, Life Extension
-        2. CONTENT: "Meaningful advance in biology, physics, cognitive psychology, artificial intelligence, Earth sciences, or environmental sciences" or "Contains cause-effect explanations" or "Content can be used to ask and answer meaningful questions"
+        2. CONTENT: "Meaningful advance in biology, physics, cognitive psychology, artificial intelligence, Earth sciences, or environmental sciences" or "Contains cause-effect explanations" or "Content can be comprehensibly summarized for Popular Mechanics readers" or "Content can be used to ask and answer meaningful questions"
         3. EXCLUDE: Education, Policy, Incremental tweaks, boring math proofs.
         
         If NO, return JSON: {{"score": 0, "headline": "", "reason": ""}}
@@ -298,5 +298,6 @@ if st.button("Run Scan"):
             st.markdown(f"**Pitch:** {item['ai_data']['reason']}")
             st.markdown(f"**Source:** [{item['original']['source']}]({item['original']['link']})")
             st.caption(f"**Original Title:** {item['original']['title']}")
+
 
 
